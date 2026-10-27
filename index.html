@@ -1,0 +1,178 @@
+
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#101827">
+<title>Bitcoin Address Generator</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1220;color:#edf2fa;font:16px -apple-system,BlinkMacSystemFont,sans-serif}
+main{max-width:760px;margin:auto;padding:22px 15px 45px}
+h1{font-size:28px;margin-bottom:8px}
+p{line-height:1.55}
+.muted{color:#a7b5c9;font-size:13px}
+.panel,.result,.warning{background:#142033;border:1px solid #304058;border-radius:15px;padding:16px;margin:14px 0}
+.warning{background:#342617;border-color:#8a6336;color:#ffe0b0;font-size:13px}
+textarea,input[type=number]{width:100%;padding:13px;background:#091321;color:white;border:1px solid #43536b;border-radius:10px;margin:8px 0 12px;font:inherit}
+button{padding:12px;border:0;border-radius:10px;font-weight:700;cursor:pointer}
+.primary{background:#f7931a;color:#171717;width:100%;margin-top:12px}
+.secondary{background:#293951;color:white;margin:4px 4px 8px 0}
+.choice{display:block;padding:10px 0}
+label{font-weight:600}
+.addr{overflow-wrap:anywhere;word-break:break-all;font-size:13px;line-height:1.6}
+.result h3{font-size:16px}
+.copy{background:#293951;color:white;margin-top:8px}
+code{overflow-wrap:anywhere}
+a{color:#ffc16c}
+#status{font-size:13px;color:#a8e6bc}
+</style>
+</head>
+<body>
+<main>
+<h1>₿ Bitcoin Address Generator</h1>
+<p class="muted">Legacy · Nested SegWit BIP49 · Native SegWit BIP84</p>
+
+<div class="warning">
+<strong>BẢN THỬ NGHIỆM — KHÔNG DÙNG VÍ CÓ TIỀN</strong>
+<p>Không nhập cụm từ khôi phục của ví thật. Ứng dụng không gửi cụm từ đến máy chủ do ứng dụng quản lý, nhưng thư viện được tải từ CDN và thiết bị/trình duyệt vẫn có thể có rủi ro. Chưa được kiểm toán bảo mật.</p>
+</div>
+
+<section class="panel">
+<h2>1. Cụm từ BIP39</h2>
+<p class="muted">Để thử nghiệm, hãy tạo cụm từ mới hoặc dùng nút kiểm tra vector chính thức bên dưới.</p>
+<button class="secondary" id="new">Tạo cụm từ mẫu mới</button>
+<button class="secondary" id="vector">Nạp vector kiểm thử BIP84</button>
+<textarea id="mnemonic" rows="3" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Nhập 12 hoặc 24 từ tiếng Anh"></textarea>
+
+<h2>2. Chọn định dạng</h2>
+<label class="choice"><input id="legacy" type="checkbox" checked> Legacy — BIP44 (1...)</label>
+<label class="choice"><input id="nested" type="checkbox" checked> Nested SegWit — BIP49 (3...)</label>
+<label class="choice"><input id="native" type="checkbox" checked> Native SegWit — BIP84 (bc1q...)</label>
+
+<label for="idx">Chỉ số địa chỉ</label>
+<input id="idx" type="number" min="0" max="1000000" value="0" step="1" inputmode="numeric">
+<button class="primary" id="derive">Tạo địa chỉ Bitcoin Mainnet</button>
+<p id="status" aria-live="polite"></p>
+</section>
+
+<section id="results"></section>
+<section class="panel">
+<h2>Vector kiểm thử BIP84</h2>
+<p class="muted">Cụm từ mẫu công khai, không có giá trị bí mật. Với passphrase rỗng và đường dẫn m/84'/0'/0'/0/0, địa chỉ mong đợi là:</p>
+<code class="addr">bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu</code>
+<p class="muted">Sau khi nhấn “Nạp vector kiểm thử BIP84”, chọn riêng Native SegWit và tạo địa chỉ ở index 0. So sánh kết quả với địa chỉ mong đợi.</p>
+</section>
+
+<footer class="muted">
+<p>Chuẩn: <a href="https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki">BIP39</a> · <a href="https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki">BIP44</a> · <a href="https://github.com/bitcoin/bips/blob/master/bip-0049.mediawiki">BIP49</a> · <a href="https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki">BIP84</a></p>
+<p>Ứng dụng không hiển thị khóa riêng tư, không tra số dư và không phát giao dịch.</p>
+</footer>
+</main>
+
+<script type="module">
+import { HDKey } from "https://esm.sh/@scure/bip32@1.6.2";
+import {
+  generateMnemonic, mnemonicToSeedSync, validateMnemonic
+} from "https://esm.sh/@scure/bip39@1.5.4";
+import { wordlist } from "https://esm.sh/@scure/bip39@1.5.4/wordlists/english";
+import {
+  p2pkh, p2sh, p2wpkh
+} from "https://esm.sh/@scure/btc-signer@1.5.0";
+
+const $ = id => document.getElementById(id);
+const sample = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+$("new").addEventListener("click", () => {
+  try {
+    $("mnemonic").value = generateMnemonic(wordlist, 128);
+    $("status").textContent = "Đã tạo cụm từ thử nghiệm trong trình duyệt.";
+    $("results").replaceChildren();
+  } catch (e) {
+    $("status").textContent = "Không thể tạo cụm từ. Hãy mở website qua HTTPS và thử lại.";
+  }
+});
+
+$("vector").addEventListener("click", () => {
+  $("mnemonic").value = sample;
+  $("legacy").checked = false;
+  $("nested").checked = false;
+  $("native").checked = true;
+  $("idx").value = "0";
+  $("status").textContent = "Đã nạp cụm từ mẫu BIP84 công khai.";
+});
+
+function showResult(title, path, address) {
+  const card = document.createElement("article");
+  card.className = "result";
+  const h = document.createElement("h3");
+  h.textContent = title;
+  const p = document.createElement("p");
+  p.className = "addr";
+  p.textContent = address;
+  const detail = document.createElement("p");
+  detail.className = "muted";
+  detail.textContent = "Đường dẫn: " + path;
+  const btn = document.createElement("button");
+  btn.className = "copy";
+  btn.textContent = "Sao chép địa chỉ";
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      btn.textContent = "Đã sao chép";
+    } catch {
+      btn.textContent = "Hãy chọn và sao chép thủ công";
+    }
+  });
+  card.append(h, p, detail, btn);
+  $("results").append(card);
+}
+
+$("derive").addEventListener("click", () => {
+  $("results").replaceChildren();
+  try {
+    const phrase = $("mnemonic").value.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!validateMnemonic(phrase, wordlist)) {
+      throw new Error("Cụm từ BIP39 không hợp lệ. Kiểm tra từ và thứ tự từ.");
+    }
+
+    const index = Number($("idx").value);
+    if (!Number.isInteger(index) || index < 0 || index > 1000000) {
+      throw new Error("Index phải là số nguyên từ 0 đến 1.000.000.");
+    }
+
+    const selected = [
+      ["legacy", 44, "Legacy — P2PKH"],
+      ["nested", 49, "Nested SegWit — P2SH-P2WPKH"],
+      ["native", 84, "Native SegWit — P2WPKH"]
+    ].filter(([id]) => $(id).checked);
+
+    if (!selected.length) throw new Error("Hãy chọn ít nhất một loại địa chỉ.");
+
+    const seed = mnemonicToSeedSync(phrase);
+    const master = HDKey.fromMasterSeed(seed);
+
+    for (const [id, purpose, title] of selected) {
+      const path = `m/${purpose}'/0'/0'/0/${index}`;
+      const child = master.derive(path);
+      if (!child.publicKey) throw new Error("Không tạo được khóa công khai.");
+
+      let payment;
+      if (id === "legacy") payment = p2pkh(child.publicKey);
+      if (id === "nested") payment = p2sh(p2wpkh(child.publicKey));
+      if (id === "native") payment = p2wpkh(child.publicKey);
+
+      if (!payment?.address) throw new Error("Không tạo được địa chỉ.");
+      showResult(title, path, payment.address);
+    }
+    $("status").textContent = "Đã tạo địa chỉ. Hãy đối chiếu vector kiểm thử trước khi đánh giá độ chính xác.";
+  } catch (e) {
+    $("results").replaceChildren();
+    $("status").textContent = e instanceof Error ? e.message : "Đã xảy ra lỗi.";
+  }
+});
+</script>
+</body>
+</html>
