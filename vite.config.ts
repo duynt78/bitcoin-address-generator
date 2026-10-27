@@ -1,0 +1,1 @@
+import { defineConfig } from 'vitest/config';\nexport default defineConfig({ base: './', test: { environment: 'node' } });\n
